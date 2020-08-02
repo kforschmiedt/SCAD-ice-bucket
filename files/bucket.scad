@@ -1,7 +1,10 @@
 /*
- * (C)Copyright 2020 Kent Forschmiedt
+ * bucket.scad
  *
- * Released under Creative Commons
+ * A parametric, printable ice bucket
+ *
+ * (C)Copyright 2020 Kent Forschmiedt, All Rights Reserved
+ * Licensed under Creative Commons
  */
  
 use <MCAD/regular_shapes.scad>
