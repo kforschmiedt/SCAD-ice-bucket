@@ -31,38 +31,102 @@ BucketDepthPct = 95;    // bottom clearance
 BucketWall = 1.2;
 
 /* [Lid] */
-
+DomeRadius = 70;
+KnobRadius = 10;
+DomeRim = 0.6; 
 
 /* [Parts] */
 Make_Shell = false;
 Make_Tub = false;
 Make_Lid = false;
 Make_Star = false;
+Make_Starcone = false;
+Make_Handles = false;
 
 $fa = 0.5;
 $fs = 0.5;
+$fn = 0;
 
 // no more params
 module _dummy() {}
 
-module starling()
+module cyl_shell(height, radius, wall)
 {
-    r1 = Radius;
-    r2 = Radius + StarDepth;
-    a1 = 360/StarPoints;
-    a2 = a1/2;
-    
-    angles = [for (i = [0 : StarPoints]) i*a1];
+    difference() {
+        cylinder(h=height, r=radius, center=false);
+        translate([0,0,-1])
+        cylinder(h=height+2, r=radius-wall, center=false);
+    }
+}
 
-    pts = [ for (i = [0 : StarPoints]) each
-            [ [r1*cos(angles[i]), r1*sin(angles[i])],
-              [r2*cos(angles[i]+a2), r2*sin(angles[i]+a2)] ]
+/*
+ * Make cylinder by extruding star
+ */
+module starcyl(height, radius, points, depth, twist)
+{
+    r1 = radius;
+    r2 = radius + depth;
+    a1 = 360/points;
+    a2 = a1/2;
+
+    pts = [ for (i = [0 : points-1])
+        let (a = i*a1,ap = a+a2)
+        each [ [r1*cos(a), r1*sin(a)],
+              [r2*cos(ap), r2*sin(ap)] ]
     ];
     
-    echo(pts);
+    //echo(pts);
     
-    linear_extrude(height = Height, twist=StarTwist)
+    linear_extrude(height=height, twist=twist)
     polygon(pts);
+}
+
+/*
+ * Cone version of star
+ */
+module starcone(height, radius, points, depth, twist)
+{
+    /* DIY extrude */
+
+    a1 = 360/points;
+    a2 = a1/2;
+    slices = 4 * points;
+    zstep = height / slices;
+    astep = -twist / slices;
+    
+    echo("a1: ", a1, "a2: ", a2, "slices: ", slices, "zstep: ", zstep, "astep: ", astep);
+    
+    pts = [
+        for (zi = [0 : slices])
+            let (z = zi * zstep,
+                 a = zi * astep,
+                 r1 = radius - zi * radius/slices,
+                 r2 = r1 + depth - zi * depth/slices)
+            for (i = [0 : points])
+                let (ai = a + i*a1, ap = ai+a2)
+                each [
+                    [r1*cos(ai), r1*sin(ai), z],
+                    [r2*cos(ap), r2*sin(ap), z]
+                ]
+    ];
+    //echo(pts);
+            
+    // stitch points into paths
+    // every path is a parallelogram between adjacent layers
+    // then close the bottom
+
+    paths = concat([
+        for (zi = [0 : slices-1])
+            let (base = zi * 2 * (points+1),
+                 b1 = base + 2 * (points+1))
+            for (i = [0 : 2 * points - 1])
+                [ base + i, b1 + i, b1 + i + 1, base + i + 1 ]
+        ],
+        [[for (i = [0: 2*points]) i ]]
+    );
+
+    polyhedron(points=pts, faces=paths);
+    
 }
 
 /*
@@ -72,9 +136,9 @@ module starling()
 module in_bevel_ring(height, radius, wall)
 {
     difference() {
-        cylinder_tube(height=height,
-                    radius=radius,
-                    wall=wall);
+        cyl_shell(height=height,
+                  radius=radius,
+                  wall=wall);
         translate([0,0,-1])
         cone(height=radius+1, radius=radius+1);
     }
@@ -83,13 +147,37 @@ module in_bevel_ring(height, radius, wall)
 module out_bevel_ring(height, radius, wall)
 {
     difference() {
-        cylinder_tube(height=height,
+        cyl_shell(height=height,
                       radius=radius,
                       wall=wall);
         translate([0,0,height - wall - 1])
         in_bevel_ring(height=radius+1,
                       radius=radius+1,
                       wall=wall+1);
+    }
+}
+
+/*
+ * cone made by stacked extrusion
+ */
+module conish(height=160, radius=120, rc=4, step=5, fn=12)
+{    
+//    rc = 5;
+//    step = 7;
+//    height = 160;
+//    radius = 120;
+//    fn = 11;
+
+    steps = floor(height/step);
+    hstep = (radius-rc)/steps;
+    
+    for (i = [0: 1: steps]) {
+        z = step * i;
+        x = hstep * i;
+        translate([0, 0, z])
+        rotate_extrude(angle=360)
+            translate([radius - x, 0, 0])
+            circle(r=rc, $fn=fn);
     }
 }
 
@@ -114,40 +202,81 @@ module handles1()
     }
 }
 
+/*
+ * Section of base of cone, tilted for printable angle
+ */
 module handles2()
 {
     // Handles
-    rhandle = Radius / 2;   // size of cone
-    handle2 = Radius / 6;   // placement raduis
+    rhandle = Radius / 1.8;   // size of cone
+    hpoints = floor(StarPoints / 1.7);
+    htwist = StarTwist * 2;
+    
+    handle2 = Radius / 5;   // placement radius
     sqr3 = sqrt(3);
+    fn = StarPoints/2;
     
     for (rot = [0, 180]) {
         rotate([0,0,rot])
         difference() {
+            // set height and angle of handle
             translate([.667 * Radius,
                        0,
                        0.01 * HandlePct * Height - handle2])
+
+            rotate([0, -10, 0])
+/*
+            conish(height=rhandle*sqr3,
+                   radius=rhandle,
+                   rc=3,
+                   step=4,
+                   fn=7);
+*/
+/*
             rotate([0, -10, 0])
             difference() {
+                // Add sphere to cone to round off edges
                 minkowski() {
-                    cone(height=rhandle*sqr3, radius=rhandle);
+                    cone(height=rhandle*sqr3, radius=rhandle, $fn=fn);
                     sphere(r=1);
                 }
                 translate([0,0,-Thickness*sqr3])
-                    cone(height=rhandle*sqr3, radius=rhandle);
+                    cone(height=rhandle*sqr3,
+                         radius=rhandle,
+                         $fn=fn);
             }
+*/
+            rotate([0, 0, 0])
+            difference() {
+                // Add sphere to cone to round off edges
+                starcone(height=rhandle*sqr3,
+                         radius=rhandle,
+                         points=hpoints,
+                         depth=StarDepth,
+                         twist=htwist
+                        );
+                translate([0,0,-Thickness*sqr3])
+                    cone(height=rhandle*sqr3,
+                         radius=rhandle);
+            }
+
+            // subtract interior of shell
             cylinder(h=2*Height, r=Radius - Thickness / 2);
         }
     }
-    
 }
-
+    
 module render_shell()
 {
     difference() {
         union() {
           cylinder(h=Height, r=Radius);
-          starling();
+          starcyl(height=Height,
+                  radius=Radius,
+                  points=StarPoints,
+                  depth=StarDepth,
+                  twist=StarTwist);
+
         }
         translate([0,0,-.5])
         cylinder(h=Height + 1, r=Radius-Thickness);
@@ -226,19 +355,82 @@ module render_tub()
         polygon(outline);
 }
 
-module render_lid()
+module render_lid1()
 {
+    // disc
     linear_extrude(height=Thickness)
     circle(r=Radius - Thickness - .25);
     
     difference() {
+        // donut handle
         rotate([90,0,0])
         oval_torus(inner_radius = Radius/4, thickness=[Radius/12,Radius/5]);
 
+        // slice off unused donut
         translate([0,0,-Radius/2])
         linear_extrude(height=Radius/2)
         circle(r=Radius);
     }
+}
+
+// spike knob
+function Knob1(scale) = scale * [
+/*0*/ [0, 0],
+/*1*/ [3, 0],
+/*2*/ [2, 1],
+/*3*/ [2, 2],
+/*4*/ [4, 4],
+/*4a*/[0.05,7],
+/*5*/ [0, 7],
+      [0, 0]
+];
+
+module knob1(r, offset)
+{
+    outline = Knob1(r/5);
+    echo(outline);
+    
+    translate([0, 0, offset - r/24])
+    rotate_extrude()
+        polygon(outline);
+}
+
+module knob2(r, offset)
+{
+    translate([0, 0, offset + r * 11 / 16 ])
+    sphere(r=r);
+}
+
+module render_lid2()
+{
+    rl = Radius + Thickness;
+    p = sqrt(DomeRadius*DomeRadius - rl*rl); 
+    depth = ShelfRelief - 1.2*BucketWall;
+
+    difference() {
+      difference() {
+        difference() {
+          translate([0,0,-p+depth+DomeRim])
+              sphere(r=DomeRadius);
+
+          // slice off most of sphere
+          translate([0, 0, -DomeRadius-.5])
+              cube(size=2*DomeRadius + 1, center=true);
+        }
+        // insert part
+        translate([0, 0, -1])
+        cyl_shell(height=depth + 1,
+                  radius=rl+40-.40,
+                  wall=2*Thickness+40);
+      }
+      // square off rim
+      cyl_shell(height=depth+DomeRim+1,
+                radius=rl+20,
+                wall=20);
+    }
+
+    knob1(r=KnobRadius, offset=DomeRadius - p + depth);
+//    knob2(r=KnobRadius, offset=DomeRadius - p + depth);
 }
 
 if (Make_Shell)
@@ -248,7 +440,18 @@ if (Make_Tub)
     render_tub();
 
 if (Make_Lid)
-    render_lid();
+    render_lid2();
 
 if (Make_Star)
-    starling();
+    starcyl(height=Height,
+            radius=Radius,
+            points=StarPoints,
+            depth=StarDepth,
+            twist=StarTwist);
+
+if (Make_Starcone)
+    starcone(height=Height, radius=Radius, points=StarPoints, depth=StarDepth, twist=StarTwist);
+
+
+if (Make_Handles)
+    conish();
