@@ -1,0 +1,29 @@
+{
+    "parameterSets": {
+        "Wastebasket 1": {
+            "$fa": "0.5",
+            "$fn": "0",
+            "$fs": "0.5",
+            "BottomRadius": "70",
+            "BottomRingPct": "12",
+            "Height": "190",
+            "Make_Shell": "false",
+            "Make_Star": "false",
+            "Make_Starcone": "false",
+            "Make_Wastebasket": "true",
+            "StarDepth": "2",
+            "StarPoints": "83",
+            "StarTwist": "80",
+            "Thickness": "2.2",
+            "TopRadius": "105",
+            "TopRingPct": "8",
+            "UseStar": "false",
+            "UseWeave": "false",
+            "WCycles": "30",
+            "WGap": "0.2",
+            "WScale": "0.5",
+            "WWall": "1.5"
+        }
+    },
+    "fileFormatVersion": "1"
+}
