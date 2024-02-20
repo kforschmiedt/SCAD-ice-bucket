@@ -4,13 +4,12 @@
  * A parametric, printable ice bucket
  *
  * (C)Copyright 2020 Kent Forschmiedt, All Rights Reserved
- * Licensed under Creative Commons
  */
- 
+
+use <../../lib/shapes.scad> 
 use <MCAD/regular_shapes.scad>
 
 /* [Shell Dimensions] */
-
 Height = 100;
 Radius = 50;
 Thickness = 3.2;
@@ -18,14 +17,28 @@ ShelfHeight = 5.2;
 ShelfRelief = 6.4;      // leave room for lid
 ShellRingPct = 15;
 HandlePct = 70;
+TopShelf = true;
 
 /* [Texture] */
+UseStar = false;
 StarPoints = 12;
 StarDepth = 1.5;
 StarTwist = 40;
 
-/* [Bucket] */
+/* [Handle] */
+HandleType = 2;
+HandlePoints = 6;
+HandleDepth = 1.5;
+HandleTwist = 0;
 
+/* [Weave] */
+UseWeave = false;
+WWall = 1.5;
+WScale = .5;
+WCycles = 30;
+WGap = 0.2;
+
+/* [Tub] */
 BucketBasePct = 98;     // taper
 BucketDepthPct = 95;    // bottom clearance
 BucketWall = 1.2;
@@ -34,11 +47,20 @@ BucketWall = 1.2;
 DomeRadius = 70;
 KnobRadius = 10;
 DomeRim = 0.6; 
+LidType = 2;
+
+/* [Tray] */
+TrayBasePct = 90;
+TrayDepthPct = 30;
+TrayPostRadius = 5;
+TrayPostHeight = 110;
 
 /* [Parts] */
 Make_Shell = false;
 Make_Tub = false;
 Make_Lid = false;
+Make_Tray = false;
+Make_Divider = false;
 Make_Star = false;
 Make_Starcone = false;
 Make_Handles = false;
@@ -50,137 +72,40 @@ $fn = 0;
 // no more params
 module _dummy() {}
 
-module cyl_shell(height, radius, wall)
+function _ibr(h, r, w) =
+        [[r,0],[r-w,w],[r-w,h],[r,h],[r,0]];
+function _i2br(h, r, w) =
+        [[r,h/2],[r,-h/2],[r-w,-h/2+w],[r-w,h/2-w],[r,h/2]];
+function _obr(h, r, w) =
+        [[r-w,0],[r-w,h],[r,h],[r,w],[r-w,0]]; 
+
+module in_bevel_ring(height, radius, wall, $fa=4)
 {
-    difference() {
-        cylinder(h=height, r=radius, center=false);
-        translate([0,0,-1])
-        cylinder(h=height+2, r=radius-wall, center=false);
-    }
+    pts = _ibr(height,radius,wall);
+    //render()
+    rotate_extrude()
+        polygon(pts);
 }
 
-/*
- * Make cylinder by extruding star
+module in2_bevel_ring(height, radius, wall, $fa=1)
+{
+    pts = _i2br(height,radius,wall);
+    //render()
+    rotate_extrude()
+        polygon(pts);
+}
+
+module out_bevel_ring(height, radius, wall, $fa=1)
+{
+    pts = _obr(height,radius,wall);
+    //render()
+    rotate_extrude()
+        polygon(pts);
+}
+
+/* 
+ * handles1 - squashed torus handle
  */
-module starcyl(height, radius, points, depth, twist)
-{
-    r1 = radius;
-    r2 = radius + depth;
-    a1 = 360/points;
-    a2 = a1/2;
-
-    pts = [ for (i = [0 : points-1])
-        let (a = i*a1,ap = a+a2)
-        each [ [r1*cos(a), r1*sin(a)],
-              [r2*cos(ap), r2*sin(ap)] ]
-    ];
-    
-    //echo(pts);
-    
-    linear_extrude(height=height, twist=twist)
-    polygon(pts);
-}
-
-/*
- * Cone version of star
- */
-module starcone(height, radius, points, depth, twist)
-{
-    /* DIY extrude */
-
-    a1 = 360/points;
-    a2 = a1/2;
-    slices = 4 * points;
-    zstep = height / slices;
-    astep = -twist / slices;
-    
-    echo("a1: ", a1, "a2: ", a2, "slices: ", slices, "zstep: ", zstep, "astep: ", astep);
-    
-    pts = [
-        for (zi = [0 : slices])
-            let (z = zi * zstep,
-                 a = zi * astep,
-                 r1 = radius - zi * radius/slices,
-                 r2 = r1 + depth - zi * depth/slices)
-            for (i = [0 : points])
-                let (ai = a + i*a1, ap = ai+a2)
-                each [
-                    [r1*cos(ai), r1*sin(ai), z],
-                    [r2*cos(ap), r2*sin(ap), z]
-                ]
-    ];
-    //echo(pts);
-            
-    // stitch points into paths
-    // every path is a parallelogram between adjacent layers
-    // then close the bottom
-
-    paths = concat([
-        for (zi = [0 : slices-1])
-            let (base = zi * 2 * (points+1),
-                 b1 = base + 2 * (points+1))
-            for (i = [0 : 2 * points - 1])
-                [ base + i, b1 + i, b1 + i + 1, base + i + 1 ]
-        ],
-        [[for (i = [0: 2*points]) i ]]
-    );
-
-    polyhedron(points=pts, faces=paths);
-    
-}
-
-/*
- * Hollow tube, with interior shelves top and bottom
- */
-
-module in_bevel_ring(height, radius, wall)
-{
-    difference() {
-        cyl_shell(height=height,
-                  radius=radius,
-                  wall=wall);
-        translate([0,0,-1])
-        cone(height=radius+1, radius=radius+1);
-    }
-}
-
-module out_bevel_ring(height, radius, wall)
-{
-    difference() {
-        cyl_shell(height=height,
-                      radius=radius,
-                      wall=wall);
-        translate([0,0,height - wall - 1])
-        in_bevel_ring(height=radius+1,
-                      radius=radius+1,
-                      wall=wall+1);
-    }
-}
-
-/*
- * cone made by stacked extrusion
- */
-module conish(height=160, radius=120, rc=4, step=5, fn=12)
-{    
-//    rc = 5;
-//    step = 7;
-//    height = 160;
-//    radius = 120;
-//    fn = 11;
-
-    steps = floor(height/step);
-    hstep = (radius-rc)/steps;
-    
-    for (i = [0: 1: steps]) {
-        z = step * i;
-        x = hstep * i;
-        translate([0, 0, z])
-        rotate_extrude(angle=360)
-            translate([radius - x, 0, 0])
-            circle(r=rc, $fn=fn);
-    }
-}
-
 module handles1()
 {
     // Handles
@@ -209,148 +134,206 @@ module handles2()
 {
     // Handles
     rhandle = Radius / 1.8;   // size of cone
-    hpoints = floor(StarPoints / 1.7);
-    htwist = StarTwist * 2;
+    hpoints = HandlePoints;
+    htwist = HandleTwist;
+    hdepth = HandleDepth;
     
     handle2 = Radius / 5;   // placement radius
     sqr3 = sqrt(3);
-    fn = StarPoints/2;
+    fn = hpoints/2;
     
-    for (rot = [0, 180]) {
-        rotate([0,0,rot])
-        difference() {
+    //render()
+    difference() {
+        vstripe(180) {
             // set height and angle of handle
             translate([.667 * Radius,
                        0,
                        0.01 * HandlePct * Height - handle2])
-
             rotate([0, -10, 0])
 /*
-            conish(height=rhandle*sqr3,
-                   radius=rhandle,
-                   rc=3,
-                   step=4,
-                   fn=7);
-*/
-/*
-            rotate([0, -10, 0])
             difference() {
-                // Add sphere to cone to round off edges
-                minkowski() {
-                    cone(height=rhandle*sqr3, radius=rhandle, $fn=fn);
-                    sphere(r=1);
-                }
-                translate([0,0,-Thickness*sqr3])
-                    cone(height=rhandle*sqr3,
-                         radius=rhandle,
-                         $fn=fn);
-            }
-*/
-            rotate([0, 0, 0])
-            difference() {
-                // Add sphere to cone to round off edges
-                starcone(height=rhandle*sqr3,
-                         radius=rhandle,
+                // make a cone, remove the interior
+                //render()
+                starcone(h=rhandle*sqr3,
+                         r=rhandle,
                          points=hpoints,
-                         depth=StarDepth,
+                         depth=hdepth,
                          twist=htwist
                         );
                 translate([0,0,-Thickness*sqr3])
+                    //render()
                     cone(height=rhandle*sqr3,
                          radius=rhandle);
             }
-
-            // subtract interior of shell
-            cylinder(h=2*Height, r=Radius - Thickness / 2);
+*/
+            starcone_shell(h=rhandle*sqr3,
+                         r=rhandle,
+                         wall=Thickness,
+                         points=hpoints,
+                         depth=hdepth,
+                         twist=htwist
+                        );
         }
+        // subtract interior of shell
+        //render()
+        translate([0,0,0.01*HandlePct * Height - 2*handle2])
+        cylinder(h=1.5*Height, r=Radius - Thickness / 2);
     }
 }
-    
+
 module render_shell()
 {
-    difference() {
-        union() {
-          cylinder(h=Height, r=Radius);
-          starcyl(height=Height,
-                  radius=Radius,
-                  points=StarPoints,
-                  depth=StarDepth,
-                  twist=StarTwist);
-
+    if (UseStar) {
+        difference() {
+            starcyl(h=Height,
+                    r=Radius,
+                    points=StarPoints,
+                    depth=StarDepth,
+                    twist=StarTwist);
+            translate([0,0,-.5])
+                cylinder(h=Height + 1, r=Radius-Thickness);
         }
-        translate([0,0,-.5])
-        cylinder(h=Height + 1, r=Radius-Thickness);
     }
-    
-    // bottom shelf, bottom piece
-    translate([0,0,ShelfRelief])
-    in_bevel_ring(height=ShelfHeight/2,
-               radius=Radius-Thickness+.01,
-               wall=Thickness+.01);
 
-    // Bottom shelf, top piece
-    translate([0,0,ShelfRelief + ShelfHeight -.01])
-        rotate([180,0,0])
-        in_bevel_ring(height=ShelfHeight/2 + .01,
-                      radius=Radius-Thickness+.01,
-                      wall=Thickness+.01);
+    if (UseWeave) {
+        cyl_weave(h=Height,
+                  r=Radius+WScale+WWall/2,
+                  wwall=WWall,
+                  wscale=WScale,
+                  wcycles=WCycles,
+                  wgap=WGap,
+                  backfill=true,
+                  fy=.5);
+        cyl_shell(h=Height,
+                  r=Radius,
+                  wall=Thickness);
+    }
 
-    // Top shelf, bottom piece
-    translate([0,0,Height - ShelfHeight - ShelfRelief])
-        in_bevel_ring(height=ShelfHeight/2,
-                      radius=Radius-Thickness+.01,
-                      wall=Thickness+.01);
-    // Top shelf, top piece
-    translate([0,0,Height - ShelfRelief - .01])
-        rotate([180,0,0])
-        in_bevel_ring(height=ShelfHeight/2,
-                      radius=Radius-Thickness+.01,
-                      wall=Thickness+.01);
+    // Bottom shelf
+    translate([0,0,ShelfRelief+ShelfHeight/2])
+    in2_bevel_ring(height=ShelfHeight,
+               radius=Radius-Thickness+.1,
+               wall=Thickness+.1);
+
+    // Top shelf
+    if (TopShelf) {
+        translate([0,0,Height-ShelfRelief-ShelfHeight/2])
+        in2_bevel_ring(height=ShelfHeight,
+                       radius=Radius-Thickness+.1,
+                       wall=Thickness+.1);
+    }
     
     // Bottom deco ring
     hdeco = .01 * ShellRingPct * Height;
-    out_bevel_ring(height=hdeco,
-                   radius=Radius + Thickness,
-                   wall=Thickness + .01); 
-    // Top deco ring
-    translate([0,0,Height])
+    translate([0,0,hdeco])
     rotate([180,0,0])
     out_bevel_ring(height=hdeco,
                    radius=Radius + Thickness,
-                   wall=Thickness + .01); 
+                   wall=Thickness + .05); 
 
-    handles2();
+    // Top deco ring
+    translate([0,0,Height-hdeco])
+    out_bevel_ring(height=hdeco,
+                   radius=Radius + Thickness,
+                   wall=Thickness + .05); 
 
+    if (HandleType == 1) handles1();
+    else if (HandleType == 2) handles2();
+    
+    rs = log(Radius);
+    vstripe(120)
+        translate([0, Radius-Thickness, rs + 1])
+        sphere(r=rs);
 }
 
-bbmult = 0.01 * BucketBasePct;
-bdmult = 0.01 * BucketDepthPct;
-
-function Tub() = [
+function Tub() =
+let (bbmult = 0.01 * BucketBasePct,
+     bdmult = 0.01 * BucketDepthPct)
+[
 /*0*/ [0, 0],
-/*1*/ [bbmult * (Radius - 2*Thickness), 0],
-/*2*/ [(Radius - 2*Thickness),
+/*1*/ [bbmult * (Radius - 2*Thickness), 0],         // lower edge
+/*2*/ [(Radius - 2*Thickness),                      // start of shelf
             bdmult * (Height - 2 * ShelfRelief - ShelfHeight) - Thickness],
-/*3*/ [(Radius - Thickness - .1),
+/*3*/ [(Radius - Thickness - .1),                   // bottom of rim
             bdmult * (Height - 2 * ShelfRelief - ShelfHeight)],
-/*4*/ [(Radius - Thickness -.1),
+/*4*/ [(Radius - Thickness -.1),                    // top edge
             bdmult * (Height - 2 * ShelfRelief - ShelfHeight + BucketWall)],
-/*5*/ [(Radius - 2*Thickness - BucketWall),
+/*5*/ [(Radius - 2*Thickness - BucketWall),         // interior top
             bdmult * (Height - 2 * ShelfRelief - ShelfHeight + BucketWall)],
 /*6a*/ [bbmult * (Radius - 2*Thickness) - BucketWall,
-            BucketWall + BucketWall/3],
+            BucketWall + BucketWall/3],             // interior bevel top
 /*6b*/ [bbmult * (Radius - 2*Thickness) - BucketWall - BucketWall/3,
-            BucketWall],
+            BucketWall],                            // floor bevel edge
 
-/*7*/ [0, BucketWall],
+/*7*/ [0, BucketWall],                              // floor center
       [0, 0]
 ];
+
+function Divider(bpct, dpct, tAdj) =
+let(bbmult = .01*bpct,
+    bdmult = .01*dpct)
+[
+    [0, BucketWall],                              // floor center
+    [bbmult * (Radius - tAdj*Thickness) - BucketWall,
+            BucketWall],                          // floor edge
+    [(Radius - tAdj*Thickness - BucketWall),         // interior top
+            bdmult * (Height - 2 * ShelfRelief - ShelfHeight + BucketWall)],
+    [0,     bdmult * (Height - 2 * ShelfRelief - ShelfHeight + BucketWall)],
+    [0, BucketWall]                              // floor center
+];
+
+
+
+function Tray() =
+let (tbmult = 0.01 * TrayBasePct,
+     tdmult = 0.01 * TrayDepthPct,
+     topRadius = Radius - 1.5*Thickness,
+     ptRadius = TrayPostRadius - BucketWall)
+[
+/*00*/ [0, TrayPostHeight],
+/* 0*/ [0, 0],
+/* 1*/ [tbmult * topRadius, 0],                     // lower edge
+/* 2*/ [topRadius, (tdmult * Height - Thickness)],  // bottom of rim
+/* 3*/ [topRadius, (tdmult * Height)],              // top of rim
+/* 4*/ [(topRadius - BucketWall), (tdmult * Height)], // interior rim
+/* 5*/ [tbmult * topRadius - BucketWall, BucketWall], // interior lower edge
+/* 6*/ [TrayPostRadius, BucketWall],                // bottom of post
+/* 7*/ [TrayPostRadius, Height - 2*(ShelfRelief)],  // post ledge
+/* 8*/ [TrayPostRadius - BucketWall, Height - 2*(ShelfRelief)], // inner ledge
+/* 9*/ [TrayPostRadius - BucketWall, TrayPostHeight - 2*ptRadius],
+/*10*/ for (r = [0: 6: 30]) [ ptRadius * cos(r),
+                              TrayPostHeight - 2*ptRadius + ptRadius * sin(r)],
+/*11*/ for (r = [-30: 6: 90]) [ ptRadius * cos(r),
+                              TrayPostHeight - ptRadius + ptRadius * sin(r)],
+/*00*/ [0, TrayPostHeight]
+];
+
 
 module render_tub()
 {
     outline = Tub();
-    echo(outline);
-    
+    //echo(outline);
+    rotate_extrude()
+        polygon(outline);
+}
+
+module render_div(bpct, dpct, tadj)
+{
+    outline = Divider(bpct, dpct, tadj);
+    translate([0,BucketWall/2,0])
+    rotate([90, 0, 0])
+    linear_extrude(BucketWall)
+        polygon(outline);
+    translate([0,-BucketWall/2,0])
+    rotate([90, 0, 180])
+    linear_extrude(BucketWall)
+        polygon(outline);
+}
+
+module render_tray()
+{
+    outline = Tray();
+    //echo(outline);
     rotate_extrude()
         polygon(outline);
 }
@@ -388,7 +371,7 @@ function Knob1(scale) = scale * [
 module knob1(r, offset)
 {
     outline = Knob1(r/5);
-    echo(outline);
+    //echo(outline);
     
     translate([0, 0, offset - r/24])
     rotate_extrude()
@@ -401,57 +384,95 @@ module knob2(r, offset)
     sphere(r=r);
 }
 
-module render_lid2()
+module render_lid2(hole=false)
 {
     rl = Radius + Thickness;
     p = sqrt(DomeRadius*DomeRadius - rl*rl); 
     depth = ShelfRelief - 1.2*BucketWall;
 
     difference() {
-      difference() {
-        difference() {
-          translate([0,0,-p+depth+DomeRim])
-              sphere(r=DomeRadius);
+        translate([0,0,-p+depth+DomeRim])
+            sphere(r=DomeRadius);
 
-          // slice off most of sphere
-          translate([0, 0, -DomeRadius-.5])
-              cube(size=2*DomeRadius + 1, center=true);
-        }
+        // slice off most of sphere
+        translate([0, 0, -DomeRadius-.5])
+            cube(size=2*DomeRadius + 1, center=true);
+
         // insert part
         translate([0, 0, -1])
-        cyl_shell(height=depth + 1,
-                  radius=rl+40-.40,
-                  wall=2*Thickness+40);
-      }
-      // square off rim
-      cyl_shell(height=depth+DomeRim+1,
-                radius=rl+20,
-                wall=20);
+            cyl_shell(h=depth + 1,
+                      r=rl+40-.40,
+                      wall=2*Thickness+40);
+
+        // square off rim
+        cyl_shell(h=depth+DomeRim+1,
+                  r=rl+20,
+                  wall=20);
+
+        if (hole)
+            #cylinder(h=TrayPostHeight - Height + 2*(ShelfRelief),
+                     r=TrayPostRadius - BucketWall);
     }
 
     knob1(r=KnobRadius, offset=DomeRadius - p + depth);
 //    knob2(r=KnobRadius, offset=DomeRadius - p + depth);
 }
 
+module render_lid3()
+{
+    // disc
+    linear_extrude(height=Thickness)
+    difference() {
+        circle(r=Radius - Thickness - .25);
+        circle(r=TrayPostRadius - BucketWall + .25);
+    }
+}
+
+/****************************
+
+ Wrappers
+
+****************************/
+
 if (Make_Shell)
     render_shell();
 
-if (Make_Tub)
+if (Make_Tub) {
     render_tub();
+    if (Make_Divider)
+        #render_div(BucketBasePct, BucketDepthPct, 2);
+}
 
-if (Make_Lid)
-    render_lid2();
+if (Make_Lid) {
+    if (LidType == 1)
+        render_lid1();
+    else if (LidType == 2)
+        render_lid2();
+    else if (LidType == 3)
+        render_lid3();
+    else if (LidType == 4)
+        render_lid2(hole=true);
+}
+
+if (Make_Tray) {
+    render_tray();
+    if (Make_Divider)
+        #render_div(TrayBasePct, TrayDepthPct, 1.5);
+}
 
 if (Make_Star)
-    starcyl(height=Height,
-            radius=Radius,
+    starcyl(h=Height,
+            r=Radius,
             points=StarPoints,
             depth=StarDepth,
             twist=StarTwist);
 
 if (Make_Starcone)
-    starcone(height=Height, radius=Radius, points=StarPoints, depth=StarDepth, twist=StarTwist);
-
+    starcone(height=Height,
+             radius=Radius,
+             points=StarPoints,
+             depth=StarDepth,
+             twist=StarTwist);
 
 if (Make_Handles)
     conish();
